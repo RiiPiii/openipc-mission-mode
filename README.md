@@ -1,8 +1,10 @@
 # OpenIPC Mission Mode
 
-Mission-oriented interval photography for OpenIPC FPV cameras using INAV MSP telemetry.
+OpenIPC Mission Mode adds autonomous aerial reconnaissance capabilities to OpenIPC FPV cameras by combining interval photography with INAV MSP telemetry.
 
-The system starts and stops image capture from an RC switch, stores each mission in its own SD-card directory, creates a CSV index, and writes GPS/time/direction metadata directly into each JPEG EXIF block.
+Image capture is controlled by an RC switch, typically the same switch used to activate an INAV Waypoint Mission. Each mission is stored in its own SD card directory, accompanied by a CSV telemetry log. Every captured JPEG is automatically geotagged with GPS position, altitude, UTC timestamp, and image heading written directly into the EXIF metadata.
+
+The project consists of a lightweight Mission Mode controller, a standalone EXIF writer with no external dependencies, and a small modification to `msposd` that continuously exports the latest INAV telemetry for image georeferencing.
 
 ## Tested platform
 
@@ -49,17 +51,18 @@ filename,timestamp,latitude,longitude,altitude_m,heading_deg,speed_cmps
 
 ## Features
 
-- RC-switch mission start/stop
-- Configurable RC channel and PWM values
-- Configurable photo interval
-- Automatic mission directories
-- JPEG snapshots from OpenIPC `/image.jpg`
-- Per-image `mission.csv` telemetry
-- GPS latitude/longitude in EXIF
-- GPS altitude in EXIF
-- UTC `DateTimeOriginal` in EXIF
-- GPS image direction in EXIF
-- Small standalone EXIF writer with no external runtime library
+- RC-controlled mission start and stop
+- Configurable RC channel, PWM thresholds, and capture interval
+- Automatic creation of mission directories on the SD card
+- JPEG image capture using the OpenIPC `/image.jpg` endpoint
+- Automatic generation of a mission telemetry log (`mission.csv`)
+- Automatic EXIF geotagging of every image with:
+  - GPS latitude and longitude
+  - GPS altitude
+  - UTC `DateTimeOriginal`
+  - GPS image direction (True North)
+- Lightweight standalone EXIF writer with no external runtime dependencies
+- Tested with RunCam WiFiLink 2 (OpenIPC) and INAV
 
 ## Quick configuration
 
