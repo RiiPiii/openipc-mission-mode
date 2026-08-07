@@ -1,0 +1,78 @@
+Mission Mode Configuration
+==========================
+
+Mission Mode behavior is configured in:
+
+    /etc/mission.conf
+
+Default configuration:
+
+CHANNEL=8
+START=1500
+STOP=1000
+INTERVAL=25
+
+Parameter description
+---------------------
+
+CHANNEL
+    RC channel monitored by msposd.
+
+START
+    PWM value that starts a new mission.
+    Example: 1500 for the middle position of a 3-position switch.
+
+STOP
+    PWM value that stops the current mission.
+    Example: 1000 for the low position of a 3-position switch.
+
+INTERVAL
+    Time between captured images in seconds.
+
+Recommended values
+------------------
+
+Typical mapping for INAV Waypoint Missions:
+
+    CHANNEL=8
+    START=1500
+    STOP=1000
+
+Recommended capture interval:
+
+    INTERVAL=25
+
+This provides approximately 25–30% forward image overlap when flying:
+
+    Altitude: 200 m AGL
+    Speed:    50 km/h
+
+Changing configuration directly on the camera
+---------------------------------------------
+
+Change RC channel:
+
+    sed -i 's/^CHANNEL=.*/CHANNEL=8/' /etc/mission.conf
+
+Change START PWM:
+
+    sed -i 's/^START=.*/START=1500/' /etc/mission.conf
+
+Change STOP PWM:
+
+    sed -i 's/^STOP=.*/STOP=1000/' /etc/mission.conf
+
+Change capture interval:
+
+    sed -i 's/^INTERVAL=.*/INTERVAL=25/' /etc/mission.conf
+
+Verify configuration:
+
+    cat /etc/mission.conf
+
+Notes
+-----
+
+The configuration file is read every time Mission Mode is started.
+
+No recompilation is required after changing mission.conf.
