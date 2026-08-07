@@ -1,0 +1,9 @@
+Date/Time Original              : 2026:08:06 14:37:52
+GPS Latitude Ref                : North
+GPS Longitude Ref               : East
+GPS Altitude Ref                : Above Sea Level
+GPS Img Direction Ref           : True North
+GPS Img Direction               : 145
+GPS Altitude                    : 120 m Above Sea Level
+GPS Latitude                    : 48 deg 51' 23.76" N
+GPS Longitude                   : 2 deg 21' 7.92" E

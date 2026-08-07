@@ -1,0 +1,94 @@
+diff --git a/msposd.c b/msposd.c
+--- a/msposd.c
++++ b/msposd.c
+@@ -1129,15 +1129,16 @@
+ 		res = write(serial_fd, buffer, cmdlen);
+ 	}
+ 	
++	if (VariantCounter == 5 || VariantCounter == 15) {
++		construct_msp_command(buffer, MSP_RAW_GPS, NULL, 0, MSP_OUTBOUND);
++		res = write(serial_fd, buffer, cmdlen);
++	}
++
+ 	if (AHI_Enabled) {
+ 		if (AHI_Enabled >= 3 && (VariantCounter == 4 || VariantCounter == 14 )) {//twice per second home vector
+ 			construct_msp_command(buffer, MSP_COMP_GPS, NULL, 0, MSP_OUTBOUND);
+ 			res = write(serial_fd, buffer, cmdlen);			 
+ 		}
+-		if (AHI_Enabled >= 3 && (VariantCounter == 5 || VariantCounter == 15 )) {//twice per second home vector
+-			construct_msp_command(buffer, MSP_RAW_GPS, NULL, 0, MSP_OUTBOUND);
+-			res = write(serial_fd, buffer, cmdlen);			 
+-		}		
+ 		if (VariantCounter==5 && (strlen(current_fc_uid)==0 || (get_current_time_ms()/1000)%5==0) ) {//every 5 seconds refresh it
+ 			construct_msp_command(buffer, MSP_UID, NULL, 0, MSP_OUTBOUND);
+ 			res = write(serial_fd, buffer, cmdlen);
+diff --git a/osd.c b/osd.c
+--- a/osd.c
++++ b/osd.c
+@@ -138,6 +138,8 @@
+ static int16_t last_distanceToHome = 0;
+ 
+ static int16_t last_groundCourse = 0;
++static int32_t last_latitude = 0;
++static int32_t last_longitude = 0;
+ static int16_t last_altitude = 0;
+ static int16_t last_speed = 0;
+ static int16_t last_vario = 0; //cm/s
+@@ -552,6 +554,33 @@
+ }
+ static int stat_msp_ttl =0;
+ 
++static void write_mission_telemetry(void) {
++	FILE *f = fopen("/tmp/mission_telemetry.csv.tmp", "w");
++
++	time_t now = time(NULL);
++	struct tm utc;
++	gmtime_r(&now, &utc);
++
++	fprintf(
++		f,
++		"%04d-%02d-%02dT%02d:%02d:%02dZ,%.7f,%.7f,%d,%d,%d\n",
++		utc.tm_year + 1900,
++		utc.tm_mon + 1,
++		utc.tm_mday,
++		utc.tm_hour,
++		utc.tm_min,
++		utc.tm_sec,
++		last_latitude / 10000000.0,
++		last_longitude / 10000000.0,
++		last_altitude,
++		last_groundCourse,
++		last_speed
++	);
++
++	fclose(f);
++	rename("/tmp/mission_telemetry.csv.tmp", "/tmp/mission_telemetry.csv");
++}
++
+ static void rx_msp_callback(msp_msg_t *msp_message) {
+ 	// Process a received MSP message from FC and decide whether to send it to
+ 	// the PTY (DJI) or UDP port (MSP-OSD on Goggles)
+@@ -665,11 +694,18 @@
+ 	}
+ 
+ 	case MSP_RAW_GPS: {
+-		last_groundCourse = *(int16_t *)&msp_message->payload[14] / 10; // protocol sends tenths of degrees
+-		last_altitude = *(int16_t *)&msp_message->payload[10];
+-		last_speed = *(int16_t *)&msp_message->payload[12];
+-		//last_groundCourse = last_heading + stat_msp_ttl%90 -45; //Simulate offset 
+-		break;
++	    
++		
++	    last_latitude  = *(int32_t *)&msp_message->payload[2];
++	    last_longitude = *(int32_t *)&msp_message->payload[6];
++
++	    last_altitude = *(int16_t *)&msp_message->payload[10];
++	    last_speed = *(int16_t *)&msp_message->payload[12];
++	    last_groundCourse = *(int16_t *)&msp_message->payload[14] / 10;
++
++	    write_mission_telemetry();
++
++	    break;
+ 	}
+ 
+ 	case MSP_ALTITUDE: {
