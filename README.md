@@ -1,10 +1,10 @@
 # OpenIPC Mission Mode
 
-OpenIPC Mission Mode adds autonomous aerial reconnaissance capabilities to OpenIPC FPV cameras by combining interval photography with INAV MSP telemetry.
+OpenIPC Mission Mode adds autonomous aerial photography and survey capabilities to OpenIPC FPV cameras by combining interval photography with INAV MSP telemetry.
 
-Image capture is controlled by an RC switch, typically the same switch used to activate an INAV Waypoint Mission. Each mission is stored in its own SD card directory, accompanied by a CSV telemetry log. Every captured JPEG is automatically geotagged with GPS position, altitude, UTC timestamp, and image heading written directly into the EXIF metadata.
+Image capture is controlled by an RC switch, typically the same switch used to activate an INAV Waypoint Mission. Each mission is stored in its own SD card directory and accompanied by a CSV telemetry log. Every captured JPEG is automatically geotagged with GPS position, altitude, UTC timestamp, and image heading written directly into the EXIF metadata.
 
-The project consists of a lightweight Mission Mode controller, a standalone EXIF writer with no external dependencies, and a small modification to `msposd` that continuously exports the latest INAV telemetry for image georeferencing.
+The project consists of a lightweight Mission Mode controller, a standalone EXIF writer with no external dependencies, and a small modification to `msposd` that continuously exports the latest INAV telemetry for image georeferencing. This makes the captured imagery suitable for mapping, surveying, and other georeferenced aerial photography workflows.
 
 ## Tested platform
 
