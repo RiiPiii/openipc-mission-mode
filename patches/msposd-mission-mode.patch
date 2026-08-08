@@ -1,7 +1,8 @@
 diff --git a/msposd.c b/msposd.c
+index d3270d0..f1b3482 100644
 --- a/msposd.c
 +++ b/msposd.c
-@@ -1129,15 +1129,16 @@
+@@ -1129,15 +1129,16 @@ static void send_variant_request2(int serial_fd) {
  		res = write(serial_fd, buffer, cmdlen);
  	}
  	
@@ -23,9 +24,10 @@ diff --git a/msposd.c b/msposd.c
  			construct_msp_command(buffer, MSP_UID, NULL, 0, MSP_OUTBOUND);
  			res = write(serial_fd, buffer, cmdlen);
 diff --git a/osd.c b/osd.c
+index 5b6f24b..ef2f52f 100644
 --- a/osd.c
 +++ b/osd.c
-@@ -138,6 +138,8 @@
+@@ -138,6 +138,8 @@ static int16_t last_directionToHome = 0;
  static int16_t last_distanceToHome = 0;
  
  static int16_t last_groundCourse = 0;
@@ -34,7 +36,7 @@ diff --git a/osd.c b/osd.c
  static int16_t last_altitude = 0;
  static int16_t last_speed = 0;
  static int16_t last_vario = 0; //cm/s
-@@ -552,6 +554,33 @@
+@@ -552,6 +554,33 @@ static bool InjectChars(char *payload) {
  }
  static int stat_msp_ttl =0;
  
@@ -68,7 +70,7 @@ diff --git a/osd.c b/osd.c
  static void rx_msp_callback(msp_msg_t *msp_message) {
  	// Process a received MSP message from FC and decide whether to send it to
  	// the PTY (DJI) or UDP port (MSP-OSD on Goggles)
-@@ -665,11 +694,18 @@
+@@ -665,12 +694,20 @@ static void rx_msp_callback(msp_msg_t *msp_message) {
  	}
  
  	case MSP_RAW_GPS: {
@@ -90,5 +92,7 @@ diff --git a/osd.c b/osd.c
 +
 +	    break;
  	}
- 
++
  	case MSP_ALTITUDE: {
+ 		last_vario = *(int16_t *)&msp_message->payload[4];
+ 		break;
