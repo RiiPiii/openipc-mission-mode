@@ -72,7 +72,7 @@ Example `/etc/mission.conf`:
 CHANNEL=8
 START=1500
 STOP=1000
-INTERVAL=3
+INTERVAL=25
 ```
 
 A three-position switch was tested as:
