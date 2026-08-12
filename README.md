@@ -1,68 +1,85 @@
 # OpenIPC Mission Mode
 
-OpenIPC Mission Mode adds autonomous aerial photography and survey capabilities to OpenIPC FPV cameras by combining interval photography with INAV MSP telemetry.
+OpenIPC Mission Mode adds autonomous aerial photography, georeferencing, and on-camera AI object detection to OpenIPC FPV cameras.
 
-Image capture is controlled by an RC switch, typically the same switch used to activate an INAV Waypoint Mission. Each mission is stored in its own SD card directory and accompanied by a CSV telemetry log. Every captured JPEG is automatically geotagged with GPS position, altitude, UTC timestamp, and image heading written directly into the EXIF metadata.
+Image capture is controlled by an RC switch, typically the same switch used to activate an INAV Waypoint Mission. During an active mission the camera captures JPEG images at a configurable interval, records the corresponding INAV telemetry, writes GPS/time/direction information into EXIF metadata, and classifies each captured image using the SigmaStar IPU.
 
-The project consists of a lightweight Mission Mode controller, a standalone EXIF writer with no external dependencies, and a small modification to `msposd` that continuously exports the latest INAV telemetry for image georeferencing. This makes the captured imagery suitable for mapping, surveying, and other georeferenced aerial photography workflows.
+The AI analyzes the **same JPEG image that Mission Mode saves**.
 
 ## Tested platform
 
 - RunCam WiFiLink 2
 - OpenIPC on SigmaStar SSC338Q / Infinity6E
-- INAV flight controller telemetry over `/dev/ttyS2`
-- OpenIPC `msposd` source reporting `22d397e-dirty` in the tested build
+- INAV telemetry over `/dev/ttyS2`
+- OpenIPC `msposd`
+- SigmaStar IPU
+- YOLOv8 640x352 NV12 model
+- SD card mounted at `/mnt/mmcblk0p1`
 
-## What it does
+## Mission flow
 
 ```text
-INAV flight controller
-        │ MSP over UART
-        ▼
-patched msposd
-        │ latest telemetry
-        ▼
-/tmp/mission_telemetry.csv
-        │
+INAV → MSP → msposd → /tmp/mission_telemetry.csv
+                         │
 RC event → channels.sh → mission.sh
-                           ├── JPEG snapshots
-                           ├── mission.csv
-                           └── mission_exif
-                                  └── GPS/time/direction EXIF
+                         ├── JPEG from /image.jpg
+                         ├── mission_image_detect
+                         │      ├── clear/
+                         │      └── detected/
+                         ├── mission_exif
+                         └── mission.csv
 ```
 
-A mission directory looks like:
+## AI image classification
+
+Mission Mode analyzes each interval photograph using the SigmaStar hardware IPU and a YOLO model. The same JPEG that is saved for the mission is passed to the detector.
 
 ```text
-MISSION_20260806_143752/
-├── IMG_20260806_143752_000001.jpg
-├── IMG_20260806_143755_000002.jpg
-├── IMG_20260806_143758_000003.jpg
+AI result 0  → clear/
+AI result 1  → detected/
+AI error     → mission root directory
+```
+
+Detected images are annotated with AI detection information. Clear images are stored without AI annotations. If the detector returns an error, the image is not incorrectly classified as clear; it remains in the mission root and is logged with `ai_detected=-1`.
+
+## Mission directory
+
+```text
+MISSION_20260812_143752/
+├── detected/
+│   ├── IMG_20260812_143817_000002.jpg
+│   └── IMG_20260812_143842_000003.jpg
+├── clear/
+│   └── IMG_20260812_143752_000001.jpg
 └── mission.csv
 ```
 
 `mission.csv` fields:
 
 ```text
-filename,timestamp,latitude,longitude,altitude_m,heading_deg,speed_cmps
+filename,timestamp,latitude,longitude,altitude_m,heading_deg,speed_cmps,ai_detected
 ```
+
+`ai_detected`: `0` = clear, `1` = detected, `-1` = detector error.
 
 > `heading_deg` currently contains INAV `MSP_RAW_GPS` ground course. It is written to EXIF as `GPSImgDirection` with True North reference.
 
 ## Features
 
 - RC-controlled mission start and stop
-- Configurable RC channel, PWM thresholds, and capture interval
-- Automatic creation of mission directories on the SD card
-- JPEG image capture using the OpenIPC `/image.jpg` endpoint
-- Automatic generation of a mission telemetry log (`mission.csv`)
-- Automatic EXIF geotagging of every image with:
-  - GPS latitude and longitude
-  - GPS altitude
-  - UTC `DateTimeOriginal`
-  - GPS image direction (True North)
-- Lightweight standalone EXIF writer with no external runtime dependencies
-- Tested with RunCam WiFiLink 2 (OpenIPC) and INAV
+- Configurable RC channel, PWM values, and capture interval
+- Minimum capture interval enforced at 10 seconds
+- Default example interval of 25 seconds
+- Automatic mission directories on the SD card
+- JPEG capture using OpenIPC `/image.jpg`
+- AI analysis of the exact JPEG captured by Mission Mode
+- SigmaStar hardware-IPU inference
+- Automatic sorting into `detected/` and `clear/`
+- AI result in `mission.csv`
+- Automatic telemetry logging
+- Automatic EXIF GPS, altitude, UTC time, and image direction
+- Restart-persistent AI runtime
+- OSD and AI tested together
 
 ## Quick configuration
 
@@ -83,43 +100,94 @@ A three-position switch was tested as:
 2000  other mode (for example RTH; ignored by Mission Mode)
 ```
 
-See [Installation](docs/installation.md) for the complete procedure.
+See [Installation](docs/installation.md) for the complete installation procedure.
 
-## Verified output
+## OSD and saved photographs
 
-Example metadata (public example coordinates):
+Mission Mode obtains JPEGs from `http://127.0.0.1/image.jpg`. The normal OpenIPC camera setting therefore determines whether OSD information is included in saved mission photographs.
 
 ```text
-Date/Time Original              : 2026:08:06 14:37:52
-GPS Latitude Ref                : North
-GPS Longitude Ref               : East
-GPS Altitude Ref                : Above Sea Level
-GPS Img Direction Ref           : True North
-GPS Img Direction               : 145
-GPS Altitude                    : 120 m Above Sea Level
-GPS Latitude                    : 48 deg 51' 23.76" N
-GPS Longitude                   : 2 deg 21' 7.92" E
+snapshot OSD enabled  → normal OSD visible in mission photographs
+snapshot OSD disabled → normal OSD absent from mission photographs
 ```
 
-## Important notes
+AI annotations on detected photographs are independent of this setting.
 
-- The camera clock supplies mission folder names and EXIF time. Ensure the camera clock is synchronized before flight.
-- GPS coordinates are meaningful only after INAV has a valid GPS fix.
-- `/tmp/mission_telemetry.csv` always contains only the latest telemetry sample; `mission.sh` copies that sample into the mission CSV when each image is captured.
-- Firmware upgrades can overwrite `/usr/bin/msposd` or `/usr/bin/wifibroadcast`; keep backups and reapply the documented changes when required.
+The included `libipu_yolo_worker.so` is the tested no-RGN worker variant. During testing, the RGN-enabled worker interfered with `msposd`; the no-RGN worker allowed AI inference and the normal OSD to operate together.
+
+## AI runtime and reboot persistence
+
+Persistent AI runtime files are stored on the SD card at:
+
+```text
+/mnt/mmcblk0p1/mission-ai/
+```
+
+The tested runtime contains:
+
+```text
+mission_image_detect
+libmission_detect.so
+libipu_yolo_worker.so
+libmi_ipu.so
+libcam_fs_wrapper.so
+libcus3a.so
+libispalgo.so
+libmi_isp.so
+mi_ipu.ko
+yolov8n352drone.img
+```
+
+At boot, the tested `mission-rc.local` logic waits for normal OpenIPC startup, restores `msposd` through `wifibroadcast start` if needed, copies the AI runtime from the SD card to `/tmp`, loads `mi_ipu.ko` when necessary, and creates `/dev/mi/ipu -> /dev/mi_ipu`.
+
+## Building
+
+For the tested SigmaStar Infinity6E target:
+
+```bash
+make star6e
+```
+
+This builds:
+
+```text
+mission_exif_star6e
+mission_image_detect_star6e
+```
+
+The default cross-compiler path is:
+
+```text
+~/openipc/msposd/toolchain/sigmastar-infinity6e/bin/arm-linux-gcc
+```
+
+It can be overridden with `STAR6E_CC`.
 
 ## Repository layout
 
 ```text
-src/        standalone EXIF writer
-scripts/    runtime shell scripts
-config/     example configuration
-patches/    msposd telemetry patch
-docs/       architecture, installation and verification
-examples/   anonymized output examples
-reference/  hashes/source snapshot from the tested camera build
+src/             Mission Mode C sources and image helpers
+include/         detector and SigmaStar ABI headers
+scripts/         runtime shell scripts and rc.local startup script
+config/          example configuration
+runtime/star6e/  tested SigmaStar AI runtime, IPU module and YOLO model
+patches/         msposd telemetry patch
+docs/            architecture, installation and verification
+examples/        anonymized output examples
+reference/       hashes/source snapshot from the tested camera build
 ```
+
+## Important notes
+
+- Synchronize the camera clock before flight.
+- GPS coordinates are meaningful only after INAV has a valid GPS fix.
+- `/tmp/mission_telemetry.csv` contains the latest telemetry sample used when each image is captured.
+- AI performance and confidence thresholds should be evaluated with representative aerial imagery.
+- Firmware upgrades can overwrite Mission Mode modifications or installed files.
+- The tested AI runtime is specific to the SigmaStar SSC338Q / Infinity6E platform used by the RunCam WiFiLink 2.
 
 ## License
 
-Original Mission Mode files in this repository are provided under the MIT License. The `msposd` patch modifies upstream OpenIPC code and remains subject to the upstream project's licensing terms.
+Original Mission Mode files in this repository are provided under the MIT License.
+
+The `msposd` patch modifies upstream OpenIPC code and remains subject to the upstream project's licensing terms. Third-party headers, libraries, kernel modules, model files, and other runtime components remain subject to their respective upstream licenses.
