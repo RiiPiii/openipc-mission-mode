@@ -1,0 +1,35 @@
+#!/bin/sh
+
+AI_DIR=/mnt/mmcblk0p1/mission-ai
+
+sleep 3
+
+# OSD taastamine, kui msposd bootimisel ei käivitunud.
+if ! pidof msposd >/dev/null 2>&1; then
+    wifibroadcast start
+fi
+
+# AI runtime taastamine /tmp alla.
+if [ -d "$AI_DIR" ]; then
+    cp "$AI_DIR/mission_image_detect" /tmp/
+    cp "$AI_DIR/libmission_detect.so" /tmp/
+    cp "$AI_DIR/libipu_yolo_worker.so" /tmp/
+    cp "$AI_DIR/libmi_ipu.so" /tmp/
+    cp "$AI_DIR/libcam_fs_wrapper.so" /tmp/
+    cp "$AI_DIR/libcus3a.so" /tmp/
+    cp "$AI_DIR/libispalgo.so" /tmp/
+    cp "$AI_DIR/libmi_isp.so" /tmp/
+    cp "$AI_DIR/yolov8n352drone.img" /tmp/
+    cp "$AI_DIR/mi_ipu.ko" /tmp/
+
+    chmod +x /tmp/mission_image_detect
+
+    if ! lsmod | grep -q '^mi_ipu '; then
+        insmod /tmp/mi_ipu.ko
+    fi
+
+    mkdir -p /dev/mi
+    ln -sf /dev/mi_ipu /dev/mi/ipu
+fi
+
+exit 0

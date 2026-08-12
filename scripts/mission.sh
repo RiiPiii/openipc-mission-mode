@@ -4,9 +4,16 @@ CONF=/etc/mission.conf
 BASE=/mnt/mmcblk0p1
 PIDFILE=/tmp/mission.pid
 TELEMETRY=/tmp/mission_telemetry.csv
+DETECTOR=/tmp/mission_image_detect
 
 [ -f "$CONF" ] || exit 1
 . "$CONF"
+
+# INTERVAL võib muuta, kuid mitte alla 10 sekundi.
+case "$INTERVAL" in
+    ''|*[!0-9]*) INTERVAL=25 ;;
+esac
+[ "$INTERVAL" -lt 10 ] && INTERVAL=10
 
 start_mission() {
     if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
@@ -14,10 +21,13 @@ start_mission() {
     fi
 
     DIR="$BASE/MISSION_$(date +%Y%m%d_%H%M%S)"
-    mkdir -p "$DIR"
+    DETECTED="$DIR/detected"
+    CLEAR="$DIR/clear"
+
+    mkdir -p "$DETECTED" "$CLEAR"
 
     CSV="$DIR/mission.csv"
-    echo "filename,timestamp,latitude,longitude,altitude_m,heading_deg,speed_cmps" > "$CSV"
+    echo "filename,timestamp,latitude,longitude,altitude_m,heading_deg,speed_cmps,ai_detected" > "$CSV"
 
     (
         N=1
@@ -25,12 +35,40 @@ start_mission() {
         while true; do
             TIMESTAMP=$(date +%Y%m%d_%H%M%S)
             NAME=$(printf "IMG_%s_%06d.jpg" "$TIMESTAMP" "$N")
-            FILE="$DIR/$NAME"
 
-            if wget -q -O "$FILE" http://127.0.0.1/image.jpg; then
+            # Kõigepealt salvestame täpselt selle JPG, mida AI analüüsib.
+            TMPFILE="$DIR/$NAME"
+
+            if wget -q -O "$TMPFILE" http://127.0.0.1/image.jpg && [ -s "$TMPFILE" ]; then
+
+                LD_LIBRARY_PATH=/tmp:/usr/lib:/lib \
+                LD_PRELOAD="/tmp/libcus3a.so:/tmp/libispalgo.so:/tmp/libmi_isp.so" \
+                "$DETECTOR" "$TMPFILE" >/tmp/mission_image_detect.log 2>&1
+
+                AI_RESULT=$?
+
+                if [ "$AI_RESULT" -eq 1 ]; then
+                    AI=1
+                    RELFILE="detected/$NAME"
+                    FILE="$DETECTED/$NAME"
+                elif [ "$AI_RESULT" -eq 0 ]; then
+                    AI=0
+                    RELFILE="clear/$NAME"
+                    FILE="$CLEAR/$NAME"
+                else
+                    # AI vea korral ei märgi pilti ekslikult CLEAR-iks.
+                    # Jätame selle missiooni juurkausta.
+                    AI=-1
+                    RELFILE="$NAME"
+                    FILE="$TMPFILE"
+                fi
+
+                if [ "$AI_RESULT" -eq 0 ] || [ "$AI_RESULT" -eq 1 ]; then
+                    mv "$TMPFILE" "$FILE"
+                fi
+
                 if [ -s "$TELEMETRY" ]; then
                     DATA=$(cat "$TELEMETRY")
-                    echo "$NAME,$DATA" >> "$CSV"
 
                     TS=$(echo "$DATA" | cut -d, -f1)
                     LAT=$(echo "$DATA" | cut -d, -f2)
@@ -38,8 +76,15 @@ start_mission() {
                     ALT=$(echo "$DATA" | cut -d, -f4)
                     HDG=$(echo "$DATA" | cut -d, -f5)
 
-                    /usr/bin/mission_exif "$FILE" "$TS" "$LAT" "$LON" "$ALT" "$HDG"
+                    /usr/bin/mission_exif \
+                        "$FILE" "$TS" "$LAT" "$LON" "$ALT" "$HDG"
+
+                    echo "$RELFILE,$DATA,$AI" >> "$CSV"
+                else
+                    echo "$RELFILE,,,,,,,$AI" >> "$CSV"
                 fi
+
+                echo "MISSION: $RELFILE AI=$AI"
             fi
 
             N=$((N + 1))
